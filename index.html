@@ -210,3 +210,320 @@ function playTone(freq, type, duration, vol=0.15) {
     gain.gain.setValueAtTime(vol, audioCtx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
     osc.connect(gain);
+const SAVE_KEY = "realm_of_runes_save_v2";
+
+function initNewGame() {
+  state.territories = NODES_COORDS.map((pos, idx) => ({
+    id: idx,
+    name: TERRITORY_NAMES[idx],
+    wizard: WIZARD_NAMES[idx],
+    x: pos.x,
+    y: pos.y,
+    owner: (idx === 0 || idx === 6) ? "player" : "rival",
+    color: (idx === 0 || idx === 6) ? "#3d7eff" : RIVAL_COLORS[idx % RIVAL_COLORS.length]
+  }));
+  state.elapsedSeconds = 0;
+  state.rivalSurge = false;
+  state.inMinigame = false;
+  saveGame();
+  updateUI();
+  setMessage("Click an enemy territory bordering your blue lands to start a duel!");
+}
+
+function saveGame() {
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      territories: state.territories,
+      elapsedSeconds: state.elapsedSeconds,
+      rivalSurge: state.rivalSurge
+    }));
+  } catch(e) {}
+}
+
+function loadGame() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (data && Array.isArray(data.territories) && data.territories.length === 20) {
+      state.territories = data.territories;
+      state.elapsedSeconds = data.elapsedSeconds || 0;
+      state.rivalSurge = !!data.rivalSurge;
+      return true;
+    }
+  } catch(e) {}
+  return false;
+}
+
+function getNeighbors(id) {
+  const res = [];
+  for (let i = 0; i < EDGES.length; i++) {
+    const a = EDGES[i];
+    const b = EDGES[i];
+    if (a === id) res.push(b);
+    else if (b === id) res.push(a);
+  }
+  return res;
+}
+
+function isAttackable(id) {
+  const t = state.territories[id];
+  if (!t || t.owner === "player") return false;
+  return getNeighbors(id).some(nId => state.territories[nId].owner === "player");
+}
+
+function spawnParticles(x, y, color) {
+  for (let i = 0; i < 24; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1.5 + Math.random() * 4;
+    state.particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1.0,
+      color
+    });
+  }
+}
+
+function setMessage(txt) {
+  document.getElementById("messageBox").textContent = txt;
+}
+
+function updateUI() {
+  const playerCount = state.territories.filter(t => t.owner === "player").length;
+  const total = state.territories.length;
+  document.getElementById("territoryCount").textContent = playerCount;
+  const pct = (playerCount / total) * 100;
+  document.getElementById("playerProgressBar").style.width = pct + "%";
+  document.getElementById("rivalProgressBar").style.width = (100 - pct) + "%";
+  document.getElementById("surgeBadge").style.display = state.rivalSurge ? "inline-block" : "none";
+
+  const mins = String(Math.floor(state.elapsedSeconds / 60)).padStart(2, "0");
+  const secs = String(state.elapsedSeconds % 60).padStart(2, "0");
+  document.getElementById("timerDisplay").textContent = `${mins}:${secs}`;
+
+  if (playerCount === total) {
+    showGameOver(true);
+  } else if (playerCount === 0) {
+    showGameOver(false);
+  }
+}
+
+function showGameOver(won) {
+  const overlay = document.getElementById("gameOverOverlay");
+  const title = document.getElementById("gameOverTitle");
+  const text = document.getElementById("gameOverText");
+  overlay.classList.remove("hidden");
+  if (won) {
+    title.textContent = "👑 REALM CONQUERED!";
+    title.style.color = "#ffd966";
+    text.textContent = `You defeated all 20 wizard nations in ${document.getElementById("timerDisplay").textContent}!`;
+  } else {
+    title.textContent = "⚔️ DEFEATED";
+    title.style.color = "#ff7b7b";
+    text.textContent = "Your final stronghold has fallen to the rival mages.";
+  }
+}
+
+// ============ MAP RENDERING ============
+const canvas = document.getElementById("mapCanvas");
+const ctx = canvas.getContext("2d");
+
+function renderLoop() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.strokeStyle = "#2b1f18";
+  ctx.lineWidth = 1;
+  for (let x = 0; x < canvas.width; x += 50) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+  }
+  for (let y = 0; y < canvas.height; y += 50) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+  }
+
+  for (let i = 0; i < EDGES.length; i++) {
+    const tA = state.territories[EDGES[i]];
+    const tB = state.territories[EDGES[i]];
+    ctx.beginPath();
+    ctx.moveTo(tA.x, tA.y);
+    ctx.lineTo(tB.x, tB.y);
+    const borderClash = (tA.owner !== tB.owner);
+    ctx.strokeStyle = borderClash ? "#d4a37388" : "#5e432c66";
+    ctx.lineWidth = borderClash ? 3 : 2;
+    ctx.stroke();
+  }
+
+  for (const t of state.territories) {
+    const attackable = isAttackable(t.id);
+    const hovered = (state.hoveredId === t.id);
+
+    ctx.save();
+    if (t.owner === "player") {
+      ctx.shadowColor = "#4f8eff";
+      ctx.shadowBlur = 16;
+    } else if (attackable) {
+      ctx.shadowColor = "#ffd966";
+      ctx.shadowBlur = hovered ? 22 : 10;
+    }
+
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, hovered && attackable ? 30 : 26, 0, Math.PI * 2);
+    ctx.fillStyle = t.owner === "player" ? "#2a6fdb" : t.color;
+    ctx.fill();
+
+    ctx.lineWidth = attackable ? 3.5 : 2;
+    ctx.strokeStyle = t.owner === "player" ? "#a8caff" : (attackable ? "#ffd966" : "#3a281c");
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "18px serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(t.owner === "player" ? "👑" : (attackable ? "⚔️" : "🏰"), t.x, t.y);
+
+    ctx.fillStyle = t.owner === "player" ? "#9ec2ff" : "#f7e9d7";
+    ctx.font = "bold 12px Georgia, serif";
+    ctx.fillText(t.name, t.x, t.y + 39);
+  }
+
+  for (let i = state.particles.length - 1; i >= 0; i--) {
+    const p = state.particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= 0.025;
+    if (p.life <= 0) {
+      state.particles.splice(i, 1);
+      continue;
+    }
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  requestAnimationFrame(renderLoop);
+}
+
+function getMousePos(evt) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return {
+    x: (evt.clientX - rect.left) * scaleX,
+    y: (evt.clientY - rect.top) * scaleY
+  };
+}
+
+canvas.addEventListener("mousemove", e => {
+  if (state.inMinigame) return;
+  const pos = getMousePos(e);
+  let found = -1;
+  for (const t of state.territories) {
+    if (Math.hypot(pos.x - t.x, pos.y - t.y) <= 30) {
+      found = t.id;
+      break;
+    }
+  }
+  state.hoveredId = found;
+  if (found !== -1) {
+    const t = state.territories[found];
+    if (t.owner === "player") {
+      setMessage(`👑 ${t.name} — Controlled by your Arcane Order.`);
+    } else if (isAttackable(found)) {
+      setMessage(`⚔️ Click to challenge ${t.wizard} for ${t.name}!`);
+    } else {
+      setMessage(`🔒 ${t.name} (${t.wizard}) — Too far! Conquer a bordering land first.`);
+    }
+  }
+});
+
+canvas.addEventListener("click", e => {
+  if (state.inMinigame) return;
+  const pos = getMousePos(e);
+  for (const t of state.territories) {
+    if (Math.hypot(pos.x - t.x, pos.y - t.y) <= 30) {
+      if (isAttackable(t.id)) {
+        sfx.click();
+        startDuel(t);
+      } else if (t.owner !== "player") {
+        sfx.lose();
+        setMessage(`⚠️ You can only attack enemy nations touching your blue borders!`);
+      }
+      break;
+    }
+  }
+});
+
+// ============ DUEL & MINIGAMES ============
+function startDuel(targetTerritory) {
+  state.inMinigame = true;
+  const overlay = document.getElementById("minigameOverlay");
+  const container = document.getElementById("minigameContainer");
+  overlay.classList.remove("hidden");
+
+  const speedMult = state.rivalSurge ? 1.25 : 1.0;
+  const games = [runTimingGame, runMemoryGame, runManaGame, runSigilGame];
+  const chosenGame = games[Math.floor(Math.random() * games.length)];
+
+  chosenGame(container, targetTerritory, speedMult, (playerWon) => {
+    overlay.classList.add("hidden");
+    container.innerHTML = "";
+    state.inMinigame = false;
+    resolveDuel(targetTerritory, playerWon);
+  });
+}
+
+function resolveDuel(target, playerWon) {
+  if (playerWon) {
+    sfx.win();
+    state.rivalSurge = false;
+    target.owner = "player";
+    target.color = "#3d7eff";
+    spawnParticles(target.x, target.y, "#7aa9ff");
+
+    const bonusCandidates = getNeighbors(target.id)
+      .map(id => state.territories[id])
+      .filter(t => t.owner !== "player");
+
+    let bonusMsg = "";
+    if (bonusCandidates.length > 0) {
+      const bonus = bonusCandidates[Math.floor(Math.random() * bonusCandidates.length)];
+      bonus.owner = "player";
+      bonus.color = "#3d7eff";
+      spawnParticles(bonus.x, bonus.y, "#ffd966");
+      bonusMsg = ` + swept into ${bonus.name}!`;
+    }
+    setMessage(`🎉 Victory over ${target.wizard}! Conquered ${target.name}${bonusMsg}`);
+  } else {
+    sfx.lose();
+    state.rivalSurge = true;
+    const borderPlayerLands = state.territories.filter(t =>
+      t.owner === "player" && getNeighbors(t.id).some(nId => state.territories[nId].owner !== "player")
+    );
+    const pool = borderPlayerLands.length > 0 ? borderPlayerLands : state.territories.filter(t => t.owner === "player");
+    const lostCount = Math.min(pool.length, pool.length > 2 ? 2 : 1);
+    const lostNames = [];
+
+    for (let i = 0; i < lostCount; i++) {
+      const idx = Math.floor(Math.random() * pool.length);
+      const lost = pool.at(idx);
+      pool.splice(idx, 1);
+      lost.owner = "rival";
+      lost.color = target.color;
+      spawnParticles(lost.x, lost.y, "#e06565");
+      lostNames.push(lost.name);
+    }
+    setMessage(`💀 ${target.wizard} repelled you! Lost ${lostNames.join(" & ")} — Rival Surge active!`);
+  }
+  saveGame();
+  updateUI();
+}
+
+function runTimingGame(container, target, mult, done) {
+  let playerHits = 0, botHits = 0, finished = false;
+  container.innerHTML = `
+    <div class="mg-title">⚡ RUNE TIMING STRIKE</div>
