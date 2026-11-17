@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Realm of Runes: Wizard Conquest</title>
+<style>
+  * { box-sizing: border-box; user-select: none; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    background: radial-gradient(circle at 20% 30%, #1a0f0c, #0a0604);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Georgia', 'Times New Roman', serif;
+    padding: 10px; color: #f7e9d7;
+  }
+  #gameWrapper {
+    background: #1e1410;
+    border: 3px solid #b88a5b;
+    border-radius: 28px;
+    box-shadow: 0 0 40px #f0c27b44, inset 0 0 20px #00000088;
+    padding: 16px 18px 18px;
+    max-width: 1080px; width: 100%;
+  }
+  .top-bar {
+    display: flex; flex-wrap: wrap; justify-content: space-between;
+    align-items: center; gap: 12px; padding: 4px 8px 12px;
+    border-bottom: 2px solid #ab7e4b; letter-spacing: 1px;
+  }
+  .title {
+    font-size: 1.5rem; font-weight: bold;
+    background: linear-gradient(135deg, #f5e7c8, #d4a373);
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent; text-shadow: 0 0 14px #ffb86b;
+  }
+  .stats {
+    display: flex; gap: 20px; font-size: 1rem;
+    background: #2e1f16cc; padding: 6px 16px;
+    border-radius: 50px; border: 1px solid #b88a5b;
+  }
+  .stats span { color: #ffd966; font-weight: bold; margin-left: 6px; }
+  button {
+    background: #3e2b1e; border: 2px solid #c99b6b; color: #f7e9d7;
+    padding: 8px 16px; border-radius: 40px; font-size: .95rem;
+    font-family: inherit; font-weight: bold; letter-spacing: 1px;
+    cursor: pointer; box-shadow: 0 4px 0 #0e0703, 0 6px 12px black;
+    transition: all .08s ease;
+  }
+  button:hover { background: #5a3f2b; border-color: #e6b88b; transform: translateY(-1px); }
+  button:active { transform: translateY(4px); box-shadow: 0 1px 0 #0e0703; }
+  button:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+  .canvas-wrap { position: relative; display: flex; justify-content: center; margin: 12px 0 8px; }
+  canvas#mapCanvas {
+    border-radius: 24px; background: #1a130f; display: block;
+    width: 100%; height: auto; max-width: 1000px;
+    border: 2px solid #b88a5b;
+    box-shadow: 0 0 30px #b88a5b55, inset 0 0 30px #00000066;
+    cursor: crosshair;
+  }
+  .progress-section {
+    display: flex; align-items: center; gap: 14px;
+    padding: 8px 6px 4px; font-size: .95rem; flex-wrap: wrap;
+  }
+  .progress-bar-bg {
+    flex: 1; min-width: 160px; height: 18px;
+    background: #2b1e15; border-radius: 20px;
+    border: 2px solid #7e5c3c; overflow: hidden; display: flex;
+  }
+  .player-progress { height: 100%; width: 10%; background: linear-gradient(90deg,#3d7eff,#7aa9ff); transition: width .3s; box-shadow: 0 0 10px #4f8eff; }
+  .rival-progress { height: 100%; width: 90%; background: linear-gradient(90deg,#b33e3e,#e06565); transition: width .3s; box-shadow: 0 0 10px #b33e3e; }
+  .msg-box {
+    background: #1e130ecc; border: 2px solid #b88a5b;
+    border-radius: 40px; padding: 10px 20px; margin-top: 8px;
+    font-size: 1rem; color: #ffdfb0; text-align: center;
+    min-height: 2.8rem; display: flex; align-items: center; justify-content: center;
+    box-shadow: inset 0 0 12px black;
+  }
+  .overlay {
+    position: fixed; inset: 0; background: #0a0604ee;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; backdrop-filter: blur(6px);
+  }
+  .overlay-card {
+    background: #241a13; border: 4px solid #c99b6b;
+    border-radius: 40px; padding: 34px 50px; text-align: center;
+    box-shadow: 0 0 80px #ffb86b55; max-width: 90vw; max-height: 90vh; overflow-y: auto;
+  }
+  .overlay-card h2 { font-size: 2.6rem; margin-bottom: 16px; text-shadow: 0 0 20px #ffb86b; }
+  .hidden { display: none !important; }
+  .mg-title { color: #ffd966; margin-bottom: 8px; font-size: 1.3rem; }
+  .mg-sub { color: #d4b48c; margin-bottom: 12px; font-size: .95rem; }
+  .mg-scores { display: flex; justify-content: space-around; width: 100%; max-width: 420px; margin: 0 auto 10px; font-size: 1.05rem; }
+  .mg-scores span { color: #ffd966; font-weight: bold; }
+  .mg-canvas { background: #1e130e; border-radius: 16px; border: 2px solid #b88a5b; display: block; margin: 0 auto; max-width: 100%; }
+  .memory-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 260px; margin: 0 auto; }
+  .memory-cell {
+    aspect-ratio: 1; background: #2e1f16; border: 2px solid #b88a5b;
+    border-radius: 14px; display: flex; align-items: center; justify-content: center;
+    font-size: 2rem; cursor: pointer; transition: all .15s; color: #ffd966;
+  }
+  .memory-cell.flash { background: #ffd966; color: #1e130e; box-shadow: 0 0 24px #ffd966; transform: scale(1.06); }
+  .memory-cell.correct { background: #4caf50; color: white; }
+  .memory-cell.wrong { background: #b33e3e; color: white; }
+  .memory-cell:hover { border-color: #e6b88b; }
+  .mana-wrap { width: 100%; max-width: 500px; margin: 0 auto; }
+  .mana-bar { height: 36px; background: #2b1e15; border-radius: 30px; border: 3px solid #7e5c3c; overflow: hidden; display: flex; margin: 10px 0 6px; }
+  .mana-player { height: 100%; background: linear-gradient(90deg,#3d7eff,#7aa9ff); width: 50%; transition: width .1s; box-shadow: 0 0 16px #4f8eff; }
+  .mana-bot { height: 100%; background: linear-gradient(90deg,#e06565,#b33e3e); width: 50%; transition: width .1s; box-shadow: 0 0 16px #b33e3e; }
+  .sigil-area { position: relative; width: 100%; height: 300px; background: #1e130e; border-radius: 20px; border: 2px solid #b88a5b; overflow: hidden; margin-top: 8px; }
+  .sigil-orb { position: absolute; width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; cursor: pointer; transition: transform .1s; }
+  .sigil-orb.rune { background: radial-gradient(circle at 35% 30%, #7aa9ff, #2a6fdb); box-shadow: 0 0 20px #4f8eff; border: 2px solid #b0d0ff; }
+  .sigil-orb.trap { background: radial-gradient(circle at 35% 30%, #ff8080, #b33e3e); box-shadow: 0 0 20px #e06565; border: 2px solid #ffb0b0; }
+  .sigil-orb:hover { transform: scale(1.12); }
+  .sigil-orb:active { transform: scale(.92); }
+  .sigil-hud { display: flex; justify-content: space-around; width: 100%; max-width: 420px; margin: 0 auto 6px; font-size: 1.05rem; }
+  .sigil-hud span { color: #ffd966; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<div id="gameWrapper">
+  <div class="top-bar">
+    <div class="title">🗺️ REALM OF RUNES</div>
+    <div class="stats">
+      <div>⏳ <span id="timerDisplay">00:00</span></div>
+      <div>🏰 <span id="territoryCount">2</span>/20</div>
+      <div id="surgeBadge" style="display:none;color:#ff7b7b;">🔥 Rival Surge!</div>
+    </div>
+    <button id="resetBtn">⟲ New Conquest</button>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="mapCanvas" width="1000" height="600"></canvas>
+  </div>
+
+  <div class="progress-section">
+    <span>👑 Player</span>
+    <div class="progress-bar-bg">
+      <div class="player-progress" id="playerProgressBar"></div>
+      <div class="rival-progress" id="rivalProgressBar"></div>
+    </div>
+    <span>Rivals 🤖</span>
+  </div>
+
+  <div class="msg-box" id="messageBox">Click an enemy territory bordering your blue lands to start a duel!</div>
+</div>
+
+<!-- Game Over Overlay -->
+<div id="gameOverOverlay" class="overlay hidden">
+  <div class="overlay-card">
+    <h2 id="gameOverTitle">⚔️ DEFEATED</h2>
+    <p id="gameOverText" style="font-size:1.3rem;margin-bottom:26px;">Your realm has fallen.</p>
+    <button id="playAgainBtn" style="font-size:1.2rem;padding:12px 36px;">Play Again</button>
+  </div>
+</div>
+
+<!-- Minigame Overlay -->
+<div id="minigameOverlay" class="overlay hidden">
+  <div class="overlay-card" id="minigameCard" style="padding:22px 26px; min-width:340px;">
+    <div id="minigameContainer"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+// ============ DATA ============
+const TERRITORY_NAMES = [
+  "Pyrehold","Mistvale","Chronos Spire","Frostmere","Emberfall",
+  "Shadowfen","Crystal Reach","Thornwood","Stormhaven","Gloomspire",
+  "Aetherium","Starfall Peak","Blightmarsh","Sunspire","Voidwatch",
+  "Runeforge","Whisperwind","Obsidian Crag","Moonwell","Dragonrest"
+];
+
+const WIZARD_NAMES = [
+  "Archmage Ignis","Lady Sylphina","Chronomancer Vex","Frostlord Boreas","Pyromancer Cinder",
+  "Malakor the Shade","Seeress Lyra","Thornweaver Oak","Stormcaller Volt","Mordecai Grim",
+  "Aetherius Prime","Astronomer Sol","Alchemist Plague","High Priest Aurelius","Nullmage Zarek",
+  "Runesmith Thrain","Zephyr the Swift","Obsidian Kael","Lunara Moonveil","Draconis Rex"
+];
+
+const RIVAL_COLORS = [
+  "#c94a4a","#b85d3b","#a84478","#8c44a8","#4f5eb8",
+  "#3b8ea8","#3ba87a","#7aa83b","#b88a3b","#c96a3b"
+];
+
+const NODES_COORDS = [
+  {x:110, y:120}, {x:250, y:95},  {x:410, y:105}, {x:580, y:90},  {x:760, y:110},
+  {x:900, y:140}, {x:100, y:280}, {x:240, y:240}, {x:390, y:250}, {x:540, y:230},
+  {x:700, y:250}, {x:870, y:280}, {x:120, y:450}, {x:260, y:410}, {x:420, y:400},
+  {x:580, y:410}, {x:730, y:400}, {x:890, y:450}, {x:340, y:520}, {x:660, y:520}
+];
+
+const EDGES = [
+  [0,1],[0,6],[0,7],[1,2],[1,7],[2,3],[2,8],[3,4],[3,9],[4,5],[4,10],[5,11],
+  [6,7],[6,12],[7,8],[7,13],[8,9],[8,14],[9,10],[9,15],[10,11],[10,16],[11,17],
+  [12,13],[13,14],[13,18],[14,15],[14,18],[15,16],[15,19],[16,17],[16,19],[18,19]
+];
+
+// ============ SOUND ENGINE ============
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null;
+function playTone(freq, type, duration, vol=0.15) {
+  try {
+    if (!audioCtx) audioCtx = new AudioCtx();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    osc.connect(gain);
